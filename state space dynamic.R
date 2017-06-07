@@ -13,8 +13,8 @@ library(DPpackage)
 n=100
 Qprime=13.8
 Gprime=351.54
-V=100
-sigma<-0.5
+V=1
+sigma<-0.1
 aomega<-2
 bomega<-1
 kl=0.1
@@ -25,20 +25,34 @@ wt<-rgamma(n,aomega,bomega)
 #Gprime<-(1-el)*G
 yt<-NULL
 c<-NULL
+h=0.01
 #values of c very huge or very small and hence yt so taking log is problem
 for(i in 1:(n-1)){
-  c[1]<-1
-  c[i+1]<-(1-(Qprime+kl*V)/V)*c[i]+Gprime/V+wt[i+1]
+  c[1]<-1+wt[1]
+  c[i+1]<-(1-h*(Qprime+kl*V)/V)*c[i]+h*Gprime/V+wt[i+1]-wt[i]
 }
+#c<-c+wt
 plot(c)
+c2<-NULL
+#values of c very huge or very small and hence yt so taking log is problem
+for(i in 1:(n-1)){
+  c2[1]<-1+wt[1]
+  c2[i+1]<-exp(-h*i*(Qprime+kl*V)/V)*c[1]+1/(-(Qprime+kl*V)/V)*
+    (exp(-h*i*(Qprime+kl*V)/V)-1)*Gprime/V+wt[i+1]
+}
+c2
+plot(c2)
+plot(c2,c)
+abline(0,1)
 Qprime/V+kl
 set.seed(000)
 vt<-rnorm(n,0,sigma)
 #logyt<-log(c)+(vt)
 #yt<-exp(logyt)
 #hist(log(yt))
-logyt<-log(c)+(vt)
-plot((logyt))
+logyt<-log(c2)+(vt)
+plot(c2)
+points(exp(logyt),col="green")
 hist(exp(logyt))
 # p1<-p<-yhat<-k<-NULL
 # for(i in 1:(n-1)){
@@ -53,59 +67,59 @@ hist(exp(logyt))
 #boostrap draft (particle filter)
 #create function for pf
 pf<-function(nparticles,logyt, Qprime, Gprime, kl,aomega,bomega,sigma){
-  #initialize vectors
-  cestsir<-cpartiold<-cpartinew<-wparti<-wtotal<-wpartin<-cpartiw<-cpartires<-wpartires<-
-    cestpf<-stdsir<-phat<-phat1<-NULL
-  nparti<-nparticles
-  nparti1<-1/nparti
-  #distribution initial time
-  cestsir[1]<-logyt[1]
+#initialize vectors
+cestsir<-cpartiold<-cpartinew<-wparti<-wtotal<-wpartin<-cpartiw<-cpartires<-wpartires<-
+  cestpf<-stdsir<-phat<-phat1<-NULL
+nparti<-nparticles
+nparti1<-1/nparti
+#distribution initial time
+cestsir[1]<-logyt[1]
+for(i in 1:nparti){
+  cpartiold[i]<-exp(logyt[1])+rgamma(1,aomega,bomega)
+}
+#advance particles
+for(j in 1:(n-1)){
   for(i in 1:nparti){
-    cpartiold[i]<-exp(logyt[1])+rgamma(1,aomega,bomega)
+    #prediction
+    cpartinew[i]<-(1-(Qprime+kl)/V)*cpartiold[i]+rgamma(1,aomega,bomega)
+    #weights using likelihood
+    wparti[i]<-exp(-((log(cpartinew[i])-logyt[j+1])/sigma)^2)
+  } 
+  wtotal<-sum(wparti)
+  wpartin<-wparti/wtotal
+  phat<-(wtotal/nparti)
+  phat1<-c(phat1,phat)
+  
+  #update
+  cpartiw<-cpartinew*wpartin
+  #mean at time j+1
+  #cestpf[j+1]<-cpartinew*wparti
+  #resample
+  cresa<-rep(0,nparti)
+  uresa<-rep(0,nparti)
+  #cumulative sum of weights
+  cresa[1]<-wpartin[1]
+  for(i in 2:nparti){
+    cresa[i]<-cresa[i-1]+wpartin[i]
   }
-  #advance particles
-  for(j in 1:(n-1)){
-    for(i in 1:nparti){
-      #prediction
-      cpartinew[i]<-(1-(Qprime+kl)/V)*cpartiold[i]+rgamma(1,aomega,bomega)
-      #weights using likelihood
-      wparti[i]<-exp(-((log(cpartinew[i])-logyt[j+1])/sigma)^2)
-    } 
-    wtotal<-sum(wparti)
-    wpartin<-wparti/wtotal
-    phat<-(wtotal/nparti)
-    phat1<-c(phat1,phat)
-    
-    #update
-    cpartiw<-cpartinew*wpartin
-    #mean at time j+1
-    #cestpf[j+1]<-cpartinew*wparti
-    #resample
-    cresa<-rep(0,nparti)
-    uresa<-rep(0,nparti)
-    #cumulative sum of weights
-    cresa[1]<-wpartin[1]
-    for(i in 2:nparti){
-      cresa[i]<-cresa[i-1]+wpartin[i]
-    }
-    iresa<-1
-    uresa[1]<-runif(1,0,1)*nparti1
-    for(k in 1:nparti){
-      uresa[k]<-uresa[1]+nparti1*(k-1)
-      while (uresa[k]>cresa[iresa]){
-        iresa=iresa+1}
-      cpartires[k]<-cpartinew[iresa]
-      wpartires[k]<-nparti1
-    }
-    cestsir[j+1]<-mean(cpartires)
-    stdsir[j+1]<-sqrt(var(cpartires))
-    cpartiold<-cpartires
-    #end of resampling
-    #cpartiold<-cpartinew
-    mat<-(cestsir)
+  iresa<-1
+  uresa[1]<-runif(1,0,1)*nparti1
+  for(k in 1:nparti){
+    uresa[k]<-uresa[1]+nparti1*(k-1)
+    while (uresa[k]>cresa[iresa]){
+      iresa=iresa+1}
+    cpartires[k]<-cpartinew[iresa]
+    wpartires[k]<-nparti1
   }
-  updates<-as.numeric(mat)
-  return(c(updates,phat1))}
+  cestsir[j+1]<-mean(cpartires)
+  stdsir[j+1]<-sqrt(var(cpartires))
+  cpartiold<-cpartires
+  #end of resampling
+  #cpartiold<-cpartinew
+  mat<-(cestsir)
+}
+updates<-as.numeric(mat)
+return(c(updates,phat1))}
 truepf<-pf(200,logyt, Qprime, Gprime, kl,aomega,bomega,sigma)
 cpf<-truepf[1:100]
 likpf<-truepf[101:200]
@@ -124,42 +138,46 @@ ll<- -1e99
 theta.mat<-matrix(0,nrow=n.iters, ncol=p)
 x.mat<-matrix(0,nrow=n.iters,ncol=100)
 pfmcmc1<-function(n.iters, tune, thin,theta){
-  for(i in 1:n.iters){
-    message(paste(i,""),appendLF=FALSE)
-    for(j in 1:thin){
-      thetaprop<-theta*exp(rnorm(p,0,tune))
-      priorprop<-log(c(dunif(thetaprop[1],11,17),dunif(thetaprop[2],281,482),dunif(thetaprop[3],0,0.8),
-                       dunif(thetaprop[4],0.5,3),dunif(thetaprop[5],0.5,3),dgamma(thetaprop[6],1,2)))
-      prior<-log(c(dunif(theta[1],11,17),dunif(theta[2],281,482),dunif(theta[3],0,0.8),
-                   dunif(theta[4],0.5,3),dunif(theta[5],0.5,3),dgamma(theta[6],1,2)))
-      pfprop<-pf(200,logyt,thetaprop[1],thetaprop[2],thetaprop[3],thetaprop[4],thetaprop[5],thetaprop[6])
-      llprop<-log(prod((pfprop)[101:200],na.rm=TRUE))
-      pftheta<-pf(200,logyt,theta[1],theta[2],theta[3],theta[4],theta[5],theta[6])
-      x<-pftheta[1:100]
-      ll<-log(prod((pftheta)[101:200],na.rm=TRUE))
-      xprop<-pfprop[1:100]
+for(i in 1:n.iters){
+  message(paste(i,""),appendLF=FALSE)
+  for(j in 1:thin){
+    thetaprop<-theta*exp(rnorm(p,0,tune))
+    priorprop<-log(c(dunif(thetaprop[1],11,17),dunif(thetaprop[2],281,482),dunif(thetaprop[3],0,0.8),
+                     dunif(thetaprop[4],0.5,3),dunif(thetaprop[5],0.5,3),dgamma(thetaprop[6],1,2)))
+    prior<-log(c(dunif(theta[1],11,17),dunif(theta[2],281,482),dunif(theta[3],0,0.8),
+                 dunif(theta[4],0.5,3),dunif(theta[5],0.5,3),dgamma(theta[6],1,2)))
+    pfprop<-pf(200,logyt,thetaprop[1],thetaprop[2],thetaprop[3],thetaprop[4],thetaprop[5],thetaprop[6])
+    llprop<-log(prod((pfprop)[101:200],na.rm=TRUE))
+    pftheta<-pf(200,logyt,theta[1],theta[2],theta[3],theta[4],theta[5],theta[6])
+    x<-pftheta[1:100]
+    ll<-log(prod((pftheta)[101:200],na.rm=TRUE))
+    xprop<-pfprop[1:100]
       if(log(runif(1))< llprop+priorprop[1]+priorprop[2]+priorprop[3]+
          priorprop[4]+priorprop[5]+priorprop[6]-(ll+prior[1]+prior[2]+prior[3]+
                                                  prior[4]+prior[5]+prior[6])){
         theta<-thetaprop
-        ll=llprop
-        x<-xprop[1:100]
+      ll=llprop
+      x<-xprop[1:100]
       } else{
         theta<-theta
         ll=ll
         x<-x
-      }
     }
-    theta.mat[i,]<-theta
-    x.mat[i,]<-x
   }
-  return(list(theta.mat,x.mat))}
+  theta.mat[i,]<-theta
+  x.mat[i,]<-x
+}
+return(list(theta.mat,x.mat))}
 ptm <- proc.time()
 pfmcmc.out<-pfmcmc1(n.iters,tune, thin,theta)
 proc.time() - ptm
 
 thetajulia<-read.csv("/Users/n_a_abdallah/Desktop/spatial/Project2/thetamcmc.csv")
-apply(thetajulia, 2, function(x){quantile(x)})
+apply(thetajulia, 2, function(x){quantile(x,c(0.025,0.25,0.5,0.75,0.975))})
+1/quantile(thetajulia[,6],c(0.025,0.25,0.5,0.75,0.975))
+plot(thetajulia[,2],type="l")
+plot(gprime.post1zone,type="l")
+acf(thetajulia[,2], lag.max=1000)
 xjulia<-read.csv("/Users/n_a_abdallah/Desktop/spatial/Project2/xmcmc.csv")
 pred.julia<-apply(xjulia, 2, mean)
 
@@ -179,43 +197,39 @@ abline(0,1)
 quartz()
 plot(cpf)
 #points(pred, col="red")
-points(c,col="blue")
+plot(c,col="blue")
 points(exp(logyt),col="green")
-points(pred.julia, col="red")
+#points(pred.julia, col="red")
 legend("bottomright",col=c("black","red","blue","green"),text.font=4,legend=
          c("Particle filter","PMMH","Ct","yt"),bg="white", lty=1,cex=0.8)
 quartz()
 acf(pfmcmc.out[[1]][,4], lag.max=1000)
 #jags
 cat("model{
-    for (i in 1:N){ 
-    omega[i+1]~dgamma(aomega,bomega)
-    c[i+1]<-(1-(Qprime+kl*V)/V)*c[i]+Gprime/V+omega[i+1]
-    logyt[i+1]~dnorm(log(c[i+1]), sigma)
-    # p[i]<-((1-(Qprime+kl*V)/V)^2)*p1[i]+(aomega/bomega^2)
-    # k[i]<-p[i]/(p[i]+prec)
-    # p1[i+1]<-p[i]-k[i]*p[i]
-    #logyhat[i+1]~dnorm(k[i+1]*log(c[i])+(k[i+1]*c[i])-(k[i+1]*c[i]),p[i+1])
-    }
-    #p1[1]<-1
-    c[1]<-1
-    logyt[1]~dnorm(log(c[1]), sigma)
-    sigma<-1/prec
-    aomega~dunif(1,3)
-    bomega~dunif(0.5,1.5)
-    prec~dgamma(2,1)
-    Qprime~dunif(11,17)
-    Gprime~dunif(281,482)
-    kl~dunif(0,0.8)
-    }",file="modeljags.jag")
-jags<-jags.model("modeljags.jag",data=list("logyt"=logyt[1:100], N=99, "V"=V))
+  for (i in 1:N){ 
+      omega[i+1]~dgamma(aomega,bomega)
+      c[i+1]<-(1-h*(Qprime+kl*V)/V)*c[i]+h*Gprime/V+omega[i+1]
+      logyt[i+1]~dnorm(log(c[i+1]), prec)
+  }
+      omega[1]~dgamma(aomega,bomega)
+      c[1]<-1+omega[1]
+      logyt[1]~dnorm(log(c[1]), prec)
+  sigma<-1/prec
+  aomega~dunif(0.5,3)
+  bomega~dunif(0.5,3)
+  prec~dgamma(2,0.1)
+  Qprime~dunif(11,17)
+  Gprime~dunif(281,482)
+  kl~dunif(0,0.8)
+}",file="modeljags.jag")
+jags<-jags.model("modeljags.jag",data=list("logyt"=logyt, N=99, "V"=V,"h"=h))
 update(jags, 1000)
 mcmcjags<-jags.samples(jags,
-                       c('Qprime','Gprime',"kl",'sigma','c','aomega','bomega'),
-                       1000)
+             c('Qprime','Gprime',"kl",'sigma','c','aomega','bomega'),
+             1000)
 mcmcsamplesjags<-coda.samples(jags,
-                              c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
-                              1000)
+                          c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
+                          1000)
 quartz()
 plot(mcmcsamplesjags)
 summary(mcmcsamplesjags)
@@ -227,8 +241,20 @@ bomega.post1zone<-m1.dat$bomega
 qprime.post1zone<-m1.dat$Qprime
 gprime.post1zone<-m1.dat$Gprime
 kl.post1zone<-m1.dat$kl
-sigma.post1zone<-1/m1.dat$sigma
-quantile(sigma.post1zone)
+sigma.post1zone<-m1.dat$sigma
+summary(sqrt(sigma.post1zone))
+quantile(sigma.post1zone,0.975)-quantile(sigma.post1zone,0.025)
+quantile(qprime.post1zone,0.975)-quantile(qprime.post1zone,0.025)
+quantile(gprime.post1zone,0.975)-quantile(gprime.post1zone,0.025)
+quantile(aomega.post1zone,0.975)-quantile(aomega.post1zone,0.025)
+quantile(bomega.post1zone,0.975)-quantile(bomega.post1zone,0.025)
+quantile(kl.post1zone,0.975)-quantile(kl.post1zone,0.025)
+
+apply(thetajulia, 2, function(x){quantile(x,0.975)})-
+  apply(thetajulia, 2, function(x){quantile(x,0.025)})
+
+
+sigma
 c.hat <- apply(mcmcjags$c, 1, mean)
 c.hatlower<- apply(mcmcjags$c, 1, function(x) quantile(x,0.025))
 c.hatupper<-apply(mcmcjags$c, 1, function(x) quantile(x,0.975))
@@ -237,13 +263,13 @@ plotCI(c, c.hat,ui=c.hatupper, li=c.hatlower)
 abline(c(0,1))
 pf.post1zone<-vector("list")
 for(i in 1:1000){
-  pf.post1zone[[i]]<-pf(200,logyt,qprime.post1zone[i],gprime.post1zone[i],kl.post1zone[i],aomega.post1zone[i],bomega.post1zone[i],sigma.post1zone[i])
+pf.post1zone[[i]]<-pf(200,logyt,qprime.post1zone[i],gprime.post1zone[i],kl.post1zone[i],aomega.post1zone[i],bomega.post1zone[i],sigma.post1zone[i])
 }
 logyhat<-matrix(0,nrow=100,1000)
 for(i in 1:1000){
-  for(j in 1:100){
-    logyhat[j,i]<-(pf.post1zone[[i]][j])
-  }
+for(j in 1:100){
+  logyhat[j,i]<-(pf.post1zone[[i]][j])
+}
 }
 logyhat.1zone<-apply(logyhat,1,mean)
 logyt.hatlower<- apply(logyhat, 1, function(x) quantile(x,0.025))
@@ -255,12 +281,13 @@ quartz()
 #plot(truepf, col="red",ylim=c(0,30))
 #points((logyhat.1zone))
 plot(c,col="red")
-points(c.hatupper,col="blue")
-points(c.hatlower,col="blue")
-points(c.hat, col="purple")
+#points(c.hatupper,col="blue")
+#points(c.hatlower,col="blue")
+points(c.hat, col="blue")
+#points(pred.julia,col="red")
 points(exp(logyt),col="green")
-legend("bottomright",col=c("red","blue","blue","purple","green"),text.font=4,legend=
-         c("Ct","Chatupper","Chatlower","chat","yt"),bg="white", lty=1,cex=0.8)
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct","chat","yt"),bg="white", lty=1,cex=0.8)
 plot(truepf,logyhat.1zone)
 abline(0,1)
 #DP
@@ -353,20 +380,20 @@ cat("model{
     #p1t[1]<-1
     p1[1]<-r1[1]
     p2[1]<-r2[1]
-    for(j in 2:(m-1)){p1[j]<-r1[j]*(1-r1[j-1])*p1[j-1]/r1[j-1]
-    p2[j]<-r2[j]*(1-r2[j-1])*p2[j-1]/r2[j-1]}
-    for(l in 1:(m-1)){r1[l]~dbeta(1,alpha)
-    r2[l]~dbeta(1,alpha)}
-    ps1<-sum(p1[1:(m-1)])
-    p1[m]<-1-ps1
-    ps2<-sum(p2[1:(m-1)])
-    p2[m]<-1-ps2
-    for(l in 1:m){
-    muv[l]~dnorm(basemu, basetau)
-    sigmav[l]~dgamma(2,1)
-    }
-    basemu<-0
-    basetau<-1
+for(j in 2:(m-1)){p1[j]<-r1[j]*(1-r1[j-1])*p1[j-1]/r1[j-1]
+p2[j]<-r2[j]*(1-r2[j-1])*p2[j-1]/r2[j-1]}
+for(l in 1:(m-1)){r1[l]~dbeta(1,alpha)
+r2[l]~dbeta(1,alpha)}
+ps1<-sum(p1[1:(m-1)])
+p1[m]<-1-ps1
+ps2<-sum(p2[1:(m-1)])
+p2[m]<-1-ps2
+for(l in 1:m){
+muv[l]~dnorm(basemu, basetau)
+sigmav[l]~dgamma(2,1)
+}
+basemu<-0
+basetau<-1
     c[1]<-1
     logyt[1]~dnorm(log(c[1]), prec)
     alpha<-1
@@ -381,11 +408,11 @@ cat("model{
 jags.dp<-jags.model("modeljagsdp.jag",data=list("logyt"=logyt[1:41], N=40, "V"=V,"m"=100))
 update(jags.dp, 1000)
 mcmcjags.dp<-jags.samples(jags.dp,
-                          c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
-                          1000)
+                       c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
+                       1000)
 mcmcsamplesjags.dp<-coda.samples(jags.dp,
-                                 c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
-                                 1000)
+                              c('Qprime','Gprime','kl','sigma','c','aomega','bomega'),
+                              1000)
 quartz()
 plot(mcmcsamplesjags.dp)
 summary(mcmcsamplesjags.dp)
@@ -487,11 +514,11 @@ cat("model{
 jags.dp2<-jags.model("modeljagsdp2.jag",data=list("logyt"=logyt[1:41], N=40, "V"=V,"m"=100))
 update(jags.dp2, 1000)
 mcmcjags.dp2<-jags.samples(jags.dp2,
-                           c('Qprime','Gprime','k','kl','sigmav','c','aomega','bomega','logyhat'),
-                           1000)
+                          c('Qprime','Gprime','k','kl','sigmav','c','aomega','bomega','logyhat'),
+                          1000)
 mcmcsamplesjags.dp2<-coda.samples(jags.dp2,
-                                  c('Qprime','Gprime','k','kl','sigmav','c','aomega','bomega','logyhat'),
-                                  1000)
+                                 c('Qprime','Gprime','k','kl','sigmav','c','aomega','bomega','logyhat'),
+                                 1000)
 quartz()
 plot(mcmcsamplesjags.dp2)
 summary(mcmcsamplesjags.dp2)
@@ -675,11 +702,11 @@ pf2zone<-function(nparticles,n,logyt, A,g,aomega,bomega,Sigma){
         iresa1=iresa1+1}
       cpartires[k,1]<-cpartinew[iresa1,1]
       wpartires[k,1]<-nparti1
-      while (uresa2[k]>cresa2[iresa2]){
-        iresa2=iresa2+1}
-      cpartires[k,2]<-cpartinew[iresa2,2]
-      wpartires[k,2]<-nparti1
-    }
+    while (uresa2[k]>cresa2[iresa2]){
+      iresa2=iresa2+1}
+    cpartires[k,2]<-cpartinew[iresa2,2]
+    wpartires[k,2]<-nparti1
+  }
     cestsir[j+1,1]<-mean(cpartires[,1])
     cestsir[j+1,2]<-mean(cpartires[,2])
     stdsir1[j+1]<-sqrt(var(cpartires[,1]))
@@ -736,14 +763,14 @@ cat("model{
     kl~dunif(0,0.8)
     beta~dunif(0,10)
     }",file="modeljags2zone.jag")
-jags<-jags.model("modeljags2zone.jag",data=list("logyt"=logyt, N=99,"I"=diag(2), "VN"=1.1, "VF"=VF,"h"=h))
+jags<-jags.model("modeljags2zone.jag",data=list("logyt"=logyt, N=99,"I"=diag(2), "VN"=1, "VF"=1,"h"=h))
 update(jags, 1000)
 mcmcjags.2zone<-jags.samples(jags,
-                             c('Qprime','Gprime','beta',"kl",'c'),
-                             1000)
+                       c('Qprime','Gprime','beta',"kl",'c'),
+                       1000)
 mcmcsamplesjags.2zone<-coda.samples(jags,
-                                    c('Qprime','Gprime','beta',"kl",'c'),
-                                    1000)
+                              c('Qprime','Gprime','beta',"kl",'c'),
+                              1000)
 
 quartz()
 plot(mcmcsamplesjags.2zone[[1]][,1])
@@ -774,7 +801,7 @@ abline(c(0,1))
 pf.post2zone<-A.post<-g.post<-vector("list")
 for(i in 1:150){
   A.post[[i]]<-matrix(c(-(beta.post.2zone[i])/VN, (beta.post.2zone[i])/VN, beta.post.2zone[i]/VF, -(beta.post.2zone[i]+qprime.post.2zone[i])/VF+kl.post.2zone[i]),nrow=2, ncol=2,
-                      byrow=TRUE)
+                 byrow=TRUE)
   g.post[[i]]<-matrix(c(gprime.post.2zone[i]/VN,0),nrow=1, ncol=2)
   pf.post2zone[[i]]<-pf2zone(200,100,logyt,A.post[[i]],g.post[[i]],aomega,bomega,Sigma)
 }
@@ -808,18 +835,19 @@ legend("bottomright",col=c("red","black","blue","yellow","green"),text.font=4,le
          c("Particle filter trueN","Particle filter estN","CtN","chatN","ytN"),bg="white", lty=1,cex=0.8)
 
 quartz()
-plot(c[,1],col="blue")
-points(c1.hat.2zone, col="red")
+par(mfrow=c(1,2))
+plot(c[,1],col="red")
+points(c1.hat.2zone, col="blue")
 points(exp(logyt[,1]),col="green")
-legend("bottomright",col=c("blue","red","green"),text.font=4,legend=
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
          c("CtN","chatN","ytN"),bg="white", lty=1,cex=0.8)
 #plot(truepf.2zone[101:200], col="red")
 #points((logyhat.2zone2.mean))
-quartz()
-plot(c[,2],col="blue")
-points(c2.hat.2zone, col="red")
+#quartz()
+plot(c[,2],col="red")
+points(c2.hat.2zone, col="blue")
 points(exp(logyt[,2]),col="green")
-legend("bottomright",col=c("blue","red","green"),text.font=4,legend=
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
          c("CtF","chatF","ytF"),bg="white", lty=1,cex=0.8)
 
 theta2julia<-read.csv("/Users/n_a_abdallah/Desktop/spatial/Project2/thetamcmc2.csv")
@@ -848,13 +876,15 @@ legend("bottomright",col=c("red","black","blue","green"),text.font=4,legend=
 #Turbulent eddy-diffusion model
 Dt=1
 nloc<-5
-ntime<-50
-x<-seq(1,nloc,length.out=50)
-y<-seq(1,nloc,length.out=50)
+ntime<-100
+h=1
+
+x<-seq(1,nloc,length.out=ntime)
+y<-seq(1,nloc,length.out=ntime)
 matdist=NULL
 #matdist <- as.matrix(dist(c(x,y),upper=TRUE, diag=TRUE))
 for (i in 1:nloc){
-  matdist[i]=sqrt(y[i]^2+x[i]^2)
+matdist[i]=sqrt(y[i]^2+x[i]^2)
 }
 erf<-function(x){
   (2/sqrt(pi))*exp(-x^2)
@@ -863,10 +893,10 @@ csp<-matrix(0,nloc,ntime)
 for(i in 1:ntime){
   for(j in 1:nloc){
     set.seed(0000)
-    wt<-rgamma(50,1,2)
-    csp[j,i]<-Gprime/(2*pi*Dt*(matdist[j]))*(1-
-                                               (integrate(erf,lower=0,upper=(matdist[j])/sqrt(4*Dt*i)))$value)+wt[i]
-  } 
+    wt<-rgamma(ntime,2,1)
+      csp[j,i]<-Gprime/(2*pi*Dt*(matdist[j]))*(1-
+                  (integrate(erf,lower=0,upper=(matdist[j])/sqrt(4*Dt*h*i)))$value)+wt[i]
+      } 
 }
 
 quartz()
@@ -881,15 +911,15 @@ csp2<-matrix(0,nloc,ntime)
 csp2[,1]<-csp[,1]
 for(i in 2:ntime){
   for(j in 1:nloc){
-    csp2[,i]<-csp2[,(i-1)]+h*(Gprime/(4*(pi*Dt*i*h)^1.5))*
-      (exp(-(matdist[j])^2/(4*Dt*i*h)))
+    set.seed(0000)
+    wt<-rgamma(ntime,2,1)
+        csp2[,i]<-csp2[,(i-1)]+h*(Gprime/(4*(pi*Dt*i)^1.5))*
+          (exp(-(matdist[j])^2/(4*Dt*i)))+(wt[i]-wt[(i-1)])
   }
 }
 csp2
 plot(csp[1,], csp2[1,])
 abline(c(0,1))
-h=0.5
-
 
 #quartz()
 plot(csp2[1,], ylim=c(0,max(csp2[1,])))
@@ -900,36 +930,37 @@ points(csp2[5,])
 
 phi<-1
 sigma<-1
+tausq<-0.25
 set.seed(123)
-eta<-rnorm(50,0,0.5)
+eta<-rnorm(ntime,0,0.1)
 vt<-NULL
 vt[1]<-0
 for(i in 2:ntime){
-  vt[i]<-vt[i-1]+eta[i]
+vt[i]<-vt[i-1]+eta[i]
 }
 vt
 #library(geoR)
 Sigma.exp <- function(x,y,phi,sigma) {
   Sigma <- matrix(rep(0, length(x)*length(y)), nrow=length(x))
-  Sigma<- as.matrix(exp(-sigma*(dist(data.frame(cbind(x,y)),upper=TRUE, diag=TRUE,method="euclidean")*phi)))
+      Sigma<- as.matrix(exp(-sigma*(dist(data.frame(cbind(x,y)),upper=TRUE, diag=TRUE,method="euclidean")*phi)))
   return(Sigma)
 }
 sigma.sp<-Sigma.exp(x,y,1,1)
 dim(sigma.sp)
 set.seed(123)
-et<-rnorm(5,rep(0,5),c((0.25*diag(5)+sigma.sp[1:5,1:5])[,1]))
+et<-rnorm(5,rep(0,5),c((tausq*diag(5)+sigma.sp[1:5,1:5])[,1]))
 et
 # et<-grf(5, grid = "irreg", cbind(x,y), nsim = 1, cov.model = "exponential",
 #      cov.pars = c(1,1),
 #      kappa = 0.5, nugget = 0, lambda = 1, 
 #      mean = 0,  RF=TRUE)$data
-logyt3<-matrix(0,nrow=5, ncol=50)
-for(j in 1:5){
-  logyt3[j,]<-log(csp[j,]+vt)
+logyt3<-matrix(0,nrow=5, ncol=ntime)
+for(i in 1:ntime){
+  for(j in 1:5){
+    logyt3[j,i]<-log(csp[j,i]+et[j])+eta[i]
+  }
 }
-for(i in 1:50){
-  logyt3[,i]<-log(exp(logyt3[,i])+et)
-}
+
 exp(logyt3)
 quartz()
 plot(csp[1,])
@@ -952,44 +983,45 @@ distance<-as.matrix(dist(data.frame(cbind(x,y)),upper=TRUE, diag=TRUE,method="eu
 cat("model{
     for (i in 1:N){
     omega[i+1]~dgamma(aomega,bomega)
-    for(j in 1:nloc){
-    csp[j,i+1]<-csp[j,i]+h*(Gprime/(4*(pi*Dt*i*h)^1.5))*
-    (exp(-(matdist[j])^2/(4*Dt*i*h)))+omega[i+1]
-    logyt[j,i+1]~dnorm(log(csp[j,i+1]+et[j]+vt[(i+1)]), tausq)
+      for(j in 1:nloc){
+        csp[j,i+1]<-csp[j,i]+h*(Gprime/(4*(pi*Dt*i)^1.5))*
+          (exp(-(matdist[j])^2/(4*Dt*i)))+(omega[i+1]-omega[i])
+        logyt[j,i+1]~dnorm(log(csp[j,i+1]+et[j])+eta[i+1], tausq)
+      }
     }
+  for(i in 1:(N+1)){
+    eta[i]~dnorm(0,10)
+    #vt[(i+1)]<-vt[i]+eta[i]
+  }
+ for(j in 1:nloc){
+      for(m in 1:nloc){
+        k[m,j]<-sigma*exp(-phi*dist[m,j])
+        kinv[m,j]<-inverse(k[m,j])
     }
-    for(i in 1:N){
-    eta[i]~dnorm(0,2)
-    vt[(i+1)]<-vt[i]+eta[i]
-    }
-    for(j in 1:nloc){
-    for(m in 1:nloc){
-    k[m,j]<-sigma*exp(-phi*dist[m,j])
-    kinv[m,j]<-inverse(k[m,j])
-    }
-    }
-    for(j in 1:nloc){
+ }
+for(j in 1:nloc){
     et[j]~dnorm(muet,kinv[j,1])
-    #logyt[j,1]~dnorm(log(csp[j,1]+et[j]+vt[1]), tausq)
-    csp[j,1]<-exp(logyt[j,1])
-    }
-    vt[1]<-0
-    Gprime~dunif(281,482)
-    Dt~dunif(0,3)
-    sigma~dgamma(2,1)
-    phi~dunif(0.5,3)
-    aomega~dunif(1,5)
-    bomega~dunif(0.5,2)
+    #logyt[j,1]~dnorm(log(csp[j,1]+et[j])+eta[1], tausq)
+    csp[j,1]<-exp(logyt[j,1])+omega[1]
+}
+  omega[1]~dgamma(aomega,bomega)
+  #vt[1]<-0
+  Gprime~dunif(281,482)
+  Dt~dunif(0,3)
+  sigma~dgamma(2,2)
+  phi~dunif(0.5,3)
+  aomega~dunif(1,3)
+  bomega~dunif(1/2,3)
     }",file="modeljagseddy.jag")
-jags.eddy<-jags.model("modeljagseddy.jag",data=list("logyt"=logyt3, N=49,nloc=5,"h"=h,"muet"=0,
-                                                    "tausq"=1/0.25,"pi"=pi, "dist"=distance, "matdist"=matdist))
-update(jags.eddy, 1000,n.burnin=floor(n.iter/2))
+jags.eddy<-jags.model("modeljagseddy.jag",data=list("logyt"=logyt3, N=99,nloc=5,"h"=h,"muet"=0,
+                                               "tausq"=1/0.25,"pi"=pi, "dist"=distance, "matdist"=matdist))
+update(jags.eddy, 1000)
 mcmcjags.eddy<-jags.samples(jags.eddy,
-                            c('Dt','Gprime','sigma','phi',"aomega",'bomega','csp'),
-                            1000,n.burnin=floor(n.iter/2))
+                             c('Dt','Gprime','sigma','phi',"aomega",'bomega','csp'),
+                             1000)
 mcmcsamplesjags.eddy<-coda.samples(jags.eddy,
-                                   c('Dt','Gprime','sigma','phi',"aomega",'bomega','csp'),
-                                   1000,n.burnin=floor(n.iter/2))
+                                    c('Dt','Gprime','sigma','phi',"aomega",'bomega','csp'),
+                                    1000)
 
 quartz()
 plot(mcmcsamplesjags.eddy[[1]][,1])
@@ -1003,36 +1035,41 @@ Dt.post.eddy<-m1.dat.eddy$Dt
 gprime.post.eddy<-m1.dat.eddy$Gprime
 sigma.post.eddy<-m1.dat.eddy$sigma
 phi.post.eddy<-m1.dat.eddy$phi
-quantile(bomega.post.eddy)
+quantile(bomega.post.eddy,c(0.025,0.25,0.5,0.75,0.975))
 
-csp.hat<-matrix(0, nrow=5, ncol=50)
+csp.hat<-matrix(0, nrow=5, ncol=100)
 for(j in 1:5){
-  for(i in 1:50){
-    csp.hat[j,i] <- mean(mcmcsamplesjags.eddy[[1]][,4+(5*i+1-(6-j))])
-  }
+for(i in 1:100){
+csp.hat[j,i] <- mean(mcmcsamplesjags.eddy[[1]][,4+(5*i+1-(6-j))])
+}
 }
 csp.hat
-plot(csp2[5,],csp.hat[5,])
+plot(csp[5,],csp.hat[5,])
 abline(0,1)
 quartz()
-plot(csp.hat[1,])
-points(csp2[1,],col="blue")
+par(mfrow=c(3,2))
+plot(csp[1,],col="red")
+points(csp.hat[1,],col="blue")
 points(exp(logyt3[1,]),col="green")
-legend("bottomright",col=c("black","blue","green"),text.font=4,legend=
-         c("chat1","Ct1","yt1"),bg="white", lty=1,cex=0.8)
-
-plot(csp.hat[2,])
-points(csp2[2,],col="blue")
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct1","chat1","yt1"),bg="white", lty=1,cex=0.8)
+plot(csp[2,],col="red")
+points(csp.hat[2,],col="blue")
 points(exp(logyt3[2,]),col="green")
-plot(csp.hat[3,])
-points(csp2[3,],col="blue")
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct2","chat2","yt2"),bg="white", lty=1,cex=0.8)
+plot(csp[3,],col="red")
+points(csp.hat[3,],col="blue")
 points(exp(logyt3[3,]),col="green")
-plot(csp.hat[4,])
-points(csp2[4,],col="blue")
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct3","chat3","yt3"),bg="white", lty=1,cex=0.8)
+plot(csp[4,],col="red")
+points(csp.hat[4,],col="blue")
 points(exp(logyt3[4,]),col="green")
-quartz()
-plot(csp.hat[5,])
-points(csp2[5,],col="blue")
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct4","chat4","yt4"),bg="white", lty=1,cex=0.8)
+plot(csp[5,],col="red")
+points(csp.hat[5,],col="blue")
 points(exp(logyt3[5,]),col="green")
-legend("bottomright",col=c("black","blue","green"),text.font=4,legend=
-         c("chat5","Ct5","yt5"),bg="white", lty=1,cex=0.8)
+legend("bottomright",col=c("red","blue","green"),text.font=4,legend=
+         c("Ct5","chat5","yt5"),bg="white", lty=1,cex=0.8)
