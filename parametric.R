@@ -1,7 +1,7 @@
 #Bayesian dynamic model
 #general model: measurement equation: Y(t)=C(t)+vt vt iid Pv
 #transition equation: C(t+1)=(1-Q'+K.lV/V)C(t)+G'/V+wt, wt iid Pw
-#Q'=Q+erf QR+Ql, G'=(1-el)G
+
 #Simulation
 library(nimble)
 library(rjags)
