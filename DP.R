@@ -6,7 +6,6 @@ library(mvtnorm)
 library(expm)
 library(DPpackage)
 library(ggvis)
-
 n=100
 Qprime=13.8
 Gprime=351.54
